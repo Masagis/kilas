@@ -55,52 +55,19 @@ function relativeDateLabel(dateStr: string): string | null {
   return null;
 }
 
-// ─── Mock Data ───────────────────────────────────────────────────────────────
-
-function getMockEntries(): JournalEntry[] {
-  const today = new Date();
-
-  const d1 = new Date(today);
-  d1.setDate(d1.getDate() - 1);
-
-  const d2 = new Date(today);
-  d2.setDate(d2.getDate() - 3);
-
-  const d3 = new Date(today);
-  d3.setDate(d3.getDate() - 7);
-
-  const fmt = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-
-  return [
-    {
-      date: fmt(d1),
-      text: "Hari ini hujan deras, tapi aku menemukan kedai kopi baru yang sangat nyaman.",
-    },
-    {
-      date: fmt(d2),
-      text: "Membaca buku lama yang sudah lama terlupakan. Rasanya seperti bertemu teman lama.",
-    },
-    {
-      date: fmt(d3),
-      text: "Matahari terbenam hari ini luar biasa indah. Langit berwarna jingga keemasan.",
-    },
-  ];
-}
+// ─── Storage ─────────────────────────────────────────────────────────────────
 
 function loadEntries(): JournalEntry[] {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) return parsed;
     }
   } catch {
     // fall through
   }
-  const mock = getMockEntries();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(mock));
-  return mock;
+  return [];
 }
 
 function saveEntries(entries: JournalEntry[]) {
@@ -123,9 +90,6 @@ export default function App() {
 
   const today = getToday();
   const todayEntry = entries.find((e) => e.date === today);
-  const pastEntries = entries
-    .filter((e) => e.date !== today)
-    .sort((a, b) => b.date.localeCompare(a.date));
   const totalEntries = entries.length;
 
   // dark mode
@@ -139,12 +103,7 @@ export default function App() {
     saveEntries(entries);
   }, [entries]);
 
-  // populate textarea when editing
-  useEffect(() => {
-    if (isEditing && todayEntry) {
-      setText(todayEntry.text);
-    }
-  }, [isEditing, todayEntry]);
+
 
   const handleSave = useCallback(() => {
     const trimmed = text.trim();
@@ -167,8 +126,9 @@ export default function App() {
   }, [text, today]);
 
   const handleEdit = useCallback(() => {
+    if (todayEntry) setText(todayEntry.text);
     setIsEditing(true);
-  }, []);
+  }, [todayEntry]);
 
   const showInput = !todayEntry || isEditing;
   const charCount = text.length;
@@ -204,7 +164,7 @@ export default function App() {
         {/* ── Input / Today's Entry ── */}
         <section id="today-section" className="mb-6">
           {showInput ? (
-            <Card className="border-0 bg-card shadow-sm ring-1 ring-foreground/[0.06]">
+            <Card className="border-0 bg-card shadow-sm ring-1 ring-foreground/6">
               <CardContent className="space-y-4 pt-1">
                 {/* Label */}
                 <div className="flex items-center gap-2">
@@ -217,7 +177,7 @@ export default function App() {
                 {/* Textarea */}
                 <Textarea
                   id="journal-input"
-                  placeholder="Apa yang ada di pikiranmu hari ini?"
+                  placeholder="Kilasan hari ini..."
                   value={text}
                   onChange={(e) =>
                     setText(e.target.value.slice(0, MAX_CHARS + 10))
@@ -274,7 +234,7 @@ export default function App() {
           ) : (
             /* Saved today card */
             <Card
-              className={`border-0 bg-card shadow-sm ring-1 ring-foreground/[0.06] transition-all duration-500 ${
+              className={`border-0 bg-card shadow-sm ring-1 ring-foreground/6 transition-all duration-500 ${
                 savedAnimation ? "ring-emerald-500/20 shadow-md" : ""
               }`}
             >
@@ -316,52 +276,56 @@ export default function App() {
         {/* ── Total counter ── */}
         <div className="mb-2 text-center">
           <p className="text-[13px] text-muted-foreground/40">
-            {totalEntries === 0 ? (
-              "Belum ada kenangan yang terabadikan"
-            ) : (
-              <>
-                Total jurnal:{" "}
-                <span className="font-semibold text-muted-foreground/60">
-                  {totalEntries}
-                </span>
-              </>
-            )}
+            {totalEntries === 0
+              ? "Belum ada kenangan yang terabadikan."
+              : `${totalEntries} kenangan terabadikan.`}
           </p>
         </div>
 
         {/* ── Thin divider ── */}
-        <div className="mx-auto mb-10 h-px w-12 bg-foreground/[0.06]" />
+        <div className="mx-auto mb-10 h-px w-12 bg-foreground/6" />
 
-        {/* ── History / Empty ── */}
+        {/* ── Entry List / Empty ── */}
         <section id="history-section">
-          {pastEntries.length === 0 && !todayEntry ? (
+          {entries.length === 0 ? (
             <EmptyState />
-          ) : pastEntries.length === 0 && todayEntry ? (
-            <div className="flex flex-col items-center py-16 text-center">
-              <div className="mb-5 flex size-16 items-center justify-center rounded-full bg-muted/60">
-                <BookOpen className="size-6 text-muted-foreground/25" strokeWidth={1.5} />
-              </div>
-              <p className="text-sm text-muted-foreground/40">
-                Kenangan pertamamu sudah tersimpan ✨
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground/25">
-                Kembali besok untuk menambah kilasan baru.
-              </p>
-            </div>
           ) : (
             <div className="space-y-3">
-              {pastEntries.map((entry) => (
-                <HistoryCard key={entry.date} entry={entry} />
-              ))}
+              {entries
+                .slice()
+                .sort((a, b) => b.date.localeCompare(a.date))
+                .map((entry) => {
+                  const rel = relativeDateLabel(entry.date);
+                  return (
+                    <div
+                      key={entry.date}
+                      className="rounded-xl bg-card/60 px-4 py-3.5 ring-1 ring-foreground/4 transition-all duration-200 hover:bg-card hover:ring-foreground/[0.08]"
+                    >
+                      <div className="mb-1.5 flex items-center gap-2">
+                        <span className="text-[11px] font-medium text-muted-foreground/45">
+                          {formatDate(entry.date)}
+                        </span>
+                        {rel && (
+                          <span className="text-[10px] text-muted-foreground/25">
+                            · {rel}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[14px] leading-relaxed text-foreground/65">
+                        {entry.text}
+                      </p>
+                    </div>
+                  );
+                })}
             </div>
           )}
         </section>
 
         {/* ── Footer ── */}
         <footer className="mt-20 flex flex-col items-center gap-3 text-center">
-          <div className="h-px w-12 bg-foreground/[0.06]" />
+          <div className="h-px w-12 bg-foreground/6" />
           <p className="text-[11px] tracking-[0.2em] text-muted-foreground/25">
-            Satu baris. Satu hari. Satu kamu.
+            Satu kalimat. Satu hari. Satu kenangan.
           </p>
         </footer>
       </main>
@@ -370,26 +334,6 @@ export default function App() {
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
-
-function HistoryCard({ entry }: { entry: JournalEntry }) {
-  const rel = relativeDateLabel(entry.date);
-
-  return (
-    <div className="group rounded-xl bg-card/60 px-4 py-3.5 ring-1 ring-foreground/[0.04] transition-all duration-200 hover:bg-card hover:ring-foreground/[0.08]">
-      <div className="mb-1.5 flex items-center gap-2">
-        <span className="text-[11px] font-medium text-muted-foreground/45">
-          {formatDate(entry.date)}
-        </span>
-        {rel && (
-          <span className="text-[10px] text-muted-foreground/25">· {rel}</span>
-        )}
-      </div>
-      <p className="text-[14px] leading-relaxed text-foreground/65">
-        {entry.text}
-      </p>
-    </div>
-  );
-}
 
 function EmptyState() {
   return (
